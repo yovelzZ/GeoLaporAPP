@@ -13,6 +13,8 @@ class ApiService {
   // ==============================================================
   static Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
+    // Tambahkan delay super kecil (hanya opsional) untuk memastikan disk IO selesai saat login cepat
+    await Future.delayed(const Duration(milliseconds: 10)); 
     return prefs.getString('auth_token');
   }
 
@@ -26,6 +28,8 @@ class ApiService {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         final prefs = await SharedPreferences.getInstance();
+        // Clear dulu semua data lama sebelum set data baru agar benar-benar bersih
+        await prefs.clear(); 
         await prefs.setString('auth_token', data['token']);
         await prefs.setString('user_name', data['user']['name']);
         await prefs.setString('user_email', data['user']['email']);
@@ -48,6 +52,7 @@ class ApiService {
       if (response.statusCode == 201) {
         final data = json.decode(response.body);
         final prefs = await SharedPreferences.getInstance();
+        await prefs.clear(); // Bersihkan sisa data
         await prefs.setString('auth_token', data['token']);
         await prefs.setString('user_name', data['user']['name']);
         await prefs.setString('user_email', data['user']['email']);
@@ -74,14 +79,19 @@ class ApiService {
       if (token != null) {
         await http.post(
           Uri.parse('$baseUrl/logout'),
-          headers: {'Authorization': 'Bearer $token'},
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Accept': 'application/json' // Tambahan header agar backend Laravel merespons dengan benar
+          },
         );
       }
-    } catch (e) {}
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('auth_token');
-    await prefs.remove('user_name');
-    await prefs.remove('user_email');
+    } catch (e) {
+      print("Error saat logout API: $e");
+    } finally {
+      // Pastikan HAPUS SEMUA DATA di memori lokal bagaimanapun hasil API-nya
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear(); 
+    }
   }
 
   static Future<bool> updateProfile(String? name, String? password) async {
@@ -95,7 +105,10 @@ class ApiService {
 
       final response = await http.post(
         Uri.parse('$baseUrl/user/update'),
-        headers: {'Authorization': 'Bearer $token'},
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json'
+        },
         body: body,
       );
       if (response.statusCode == 200) {
@@ -115,15 +128,23 @@ class ApiService {
     try {
       String? token = await getToken();
       if (token == null) return [];
+      
       final response = await http.get(
         Uri.parse('$baseUrl/laporan/me'),
-        headers: {'Authorization': 'Bearer $token'},
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json', // SANGAT PENTING untuk Laravel API
+          // Tambahkan Cache-Control agar perangkat tidak memuat data lama (cache)
+          'Cache-Control': 'no-cache', 
+        },
       ).timeout(const Duration(seconds: 10));
+      
       if (response.statusCode == 200) {
         return json.decode(response.body);
       }
       return [];
     } catch (e) {
+      print("Error ambil riwayat: $e");
       return [];
     }
   }
@@ -135,7 +156,10 @@ class ApiService {
 
       final response = await http.post(
         Uri.parse('$baseUrl/laporan/$laporanId/dukung'),
-        headers: {'Authorization': 'Bearer $token'},
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json'
+        },
       );
 
       if (response.statusCode == 200) {
@@ -149,7 +173,10 @@ class ApiService {
 
   static Future<List<dynamic>> ambilKomentar(int laporanId) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/laporan/$laporanId/komentar'));
+      final response = await http.get(
+        Uri.parse('$baseUrl/laporan/$laporanId/komentar'),
+        headers: {'Accept': 'application/json'}
+      );
       if (response.statusCode == 200) {
         return json.decode(response.body);
       }
@@ -190,6 +217,8 @@ class ApiService {
     try {
       var uri = Uri.parse('$baseUrl/laporan');
       var request = http.MultipartRequest('POST', uri);
+      
+      request.headers['Accept'] = 'application/json';
 
       // Tambahkan Bearer Token jika user login
       String? token = await getToken();
@@ -236,9 +265,13 @@ class ApiService {
   // ==============================================================
   static Future<List<dynamic>> ambilSemuaLaporan() async {
     try {
-      final response = await http
-          .get(Uri.parse('$baseUrl/laporan'))
-          .timeout(const Duration(seconds: 10));
+      final response = await http.get(
+        Uri.parse('$baseUrl/laporan'),
+        headers: {
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache', // Paksa ambil data segar
+        }
+      ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         return json.decode(response.body);
