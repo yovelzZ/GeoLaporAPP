@@ -1,287 +1,451 @@
-<!DOCTYPE html>
-<html lang="id">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard - GeoLapor</title>
+@extends('layouts.admin')
 
-    <!-- Google Fonts: Poppins -->
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Bootstrap 5 CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
-    <!-- DataTables CSS (Untuk Tabel Canggih) -->
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
-    <!-- Animate.css (Untuk Efek Animasi Muncul) -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+@section('title', 'Dashboard')
 
+@push('css')
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol@0.79.0/dist/L.Control.Locate.min.css" />
     <style>
-        body {
-            font-family: 'Poppins', sans-serif;
-            background-color: #F4F7FE; /* Warna background abu kebiruan modern */
-            color: #2B3674;
-        }
-        /* Navbar Modern Gradient */
-        .navbar-custom {
-            background: linear-gradient(135deg, #4A90E2 0%, #00B4DB 100%);
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-            padding: 15px 0;
-        }
-        /* Card & Panel Kaca (Glassmorphism ringan) */
+        /* Card Styling */
         .glass-card {
             background: white;
-            border-radius: 20px;
+            border-radius: 12px;
             border: none;
-            box-shadow: 0 10px 30px rgba(112, 144, 176, 0.12);
-            transition: transform 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+            padding: 20px;
+            margin-bottom: 20px;
         }
-        .glass-card:hover {
-            transform: translateY(-5px); /* Efek melayang saat kursor menyorot */
+
+        .stat-card {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
-        /* Ikon pada Summary Card */
-        .summary-icon {
-            width: 55px;
-            height: 55px;
-            border-radius: 15px;
+
+        .stat-card .icon-box {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 26px;
+            font-size: 24px;
         }
-        /* Tombol Modern */
-        .btn-modern {
-            border-radius: 10px;
-            font-weight: 500;
-            transition: all 0.3s;
+
+        /* Ikon spesifik */
+        .icon-total { background: #EEF2FF; color: #6366F1; }
+        .icon-menunggu { background: #FFF7ED; color: #F97316; }
+        .icon-selesai { background: #F0FDF4; color: #22C55E; }
+        .icon-kategori { background: #F0F9FF; color: #0EA5E9; }
+
+        .stat-card h3 {
+            margin: 0;
+            font-weight: 700;
+            font-size: 28px;
         }
-        .btn-modern:hover {
-            transform: scale(1.05);
-        }
-        /* Soft Badge untuk Status (Warna Pastel kekinian) */
-        .badge-soft-warning { background-color: #FFF4DE; color: #FFA800; }
-        .badge-soft-primary { background-color: #E1E9FF; color: #3E82F7; }
-        .badge-soft-success { background-color: #E8FFF3; color: #00C689; }
-        .badge-custom {
-            padding: 8px 12px;
-            border-radius: 8px;
+
+        .stat-card p {
+            margin: 0;
+            color: #64748B;
+            font-size: 13px;
             font-weight: 600;
-            font-size: 12px;
+            text-transform: uppercase;
         }
-        /* Thumbnail Gambar dengan Efek Hover */
-        .img-thumbnail-custom {
-            border-radius: 12px;
-            transition: transform 0.3s;
-            cursor: pointer;
-        }
-        .img-thumbnail-custom:hover {
-            transform: scale(1.1);
-        }
-        /* Mempercantik border tabel */
-        table.dataTable { border-collapse: collapse !important; }
-        .table>:not(caption)>*>* { padding: 1rem 0.5rem; }
-    </style>
-</head>
-<body>
 
-    <!-- NAVBAR UTAMA -->
-    <nav class="navbar navbar-expand-lg navbar-dark navbar-custom animate__animated animate__fadeInDown">
-        <div class="container-fluid px-4">
-            <a class="navbar-brand fw-bold" href="#"><i class="bi bi-geo-alt-fill text-warning"></i> GeoLapor Command Center</a>
-            <div class="d-flex align-items-center">
-                <span class="text-white me-3"><i class="bi bi-person-circle"></i> Halo, Administrator</span>
-                <button class="btn btn-light btn-sm btn-modern text-primary"><i class="bi bi-box-arrow-right"></i> Keluar</button>
-            </div>
-        </div>
-    </nav>
-
-    <div class="container-fluid px-4 py-4">
+        /* Chart & Map Container */
+        #map {
+            height: 350px;
+            border-radius: 10px;
+            z-index: 1;
+        }
         
-        <!-- ALERT SUKSES BERHASIL UPDATE -->
-        @if(session('success'))
-            <div class="alert alert-success alert-dismissible fade show shadow-sm animate__animated animate__fadeInRight" role="alert" style="border-radius: 15px; border-left: 5px solid #00C689;">
-                <i class="bi bi-check-circle-fill me-2"></i> {{ session('success') }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        @endif
+        .chart-container {
+            height: 350px;
+            width: 100%;
+        }
+        
+        .table-custom th {
+            font-size: 13px;
+            color: #64748B;
+            font-weight: 600;
+            background: #F8FAFC;
+            border-bottom: 1px solid #E2E8F0;
+        }
+        
+        .table-custom td {
+            font-size: 14px;
+            vertical-align: middle;
+        }
 
-        <!-- WIDGET STATISTIK (Dihitung otomatis oleh sistem) -->
-        <div class="row mb-4 animate__animated animate__fadeInUp">
-            <!-- Card 1: Total -->
-            <div class="col-md-3">
-                <div class="card glass-card p-3 d-flex flex-row align-items-center">
-                    <div class="summary-icon bg-light text-primary me-3 shadow-sm">
-                        <i class="bi bi-file-earmark-text-fill"></i>
-                    </div>
-                    <div>
-                        <h6 class="text-muted mb-1" style="font-size: 13px;">Total Laporan Masuk</h6>
-                        <h3 class="mb-0 fw-bold">{{ $laporans->count() }}</h3>
-                    </div>
+        /* Legend Heatmap */
+        .info.legend {
+            background: white;
+            padding: 8px 12px;
+            font-size: 12px;
+            line-height: 1.5;
+            color: #555;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.1);
+        }
+        .info.legend i {
+            width: 15px;
+            height: 15px;
+            float: left;
+            margin-right: 8px;
+            opacity: 0.8;
+            border-radius: 50%;
+        }
+    </style>
+@endpush
+
+@section('content')
+<div class="container-fluid p-0">
+    
+    @if(session('success'))
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="bi bi-check-circle-fill me-2"></i> {{ session('success') }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    @endif
+
+    <!-- 4 STAT CARDS -->
+    <div class="row">
+        <!-- TOTAL PENGADUAN -->
+        <div class="col-md-3">
+            <div class="glass-card stat-card">
+                <div>
+                    <p>TOTAL PENGADUAN</p>
+                    <h3>{{ $laporans->count() }}</h3>
                 </div>
-            </div>
-            <!-- Card 2: Menunggu -->
-            <div class="col-md-3">
-                <div class="card glass-card p-3 d-flex flex-row align-items-center">
-                    <div class="summary-icon bg-light text-warning me-3 shadow-sm">
-                        <i class="bi bi-hourglass-split"></i>
-                    </div>
-                    <div>
-                        <h6 class="text-muted mb-1" style="font-size: 13px;">Laporan Menunggu</h6>
-                        <h3 class="mb-0 fw-bold">{{ $laporans->where('status', 'Menunggu')->count() }}</h3>
-                    </div>
-                </div>
-            </div>
-            <!-- Card 3: Diproses -->
-            <div class="col-md-3">
-                <div class="card glass-card p-3 d-flex flex-row align-items-center">
-                    <div class="summary-icon bg-light text-info me-3 shadow-sm">
-                        <i class="bi bi-gear-fill"></i>
-                    </div>
-                    <div>
-                        <h6 class="text-muted mb-1" style="font-size: 13px;">Sedang Diproses</h6>
-                        <h3 class="mb-0 fw-bold">{{ $laporans->where('status', 'Diproses')->count() }}</h3>
-                    </div>
-                </div>
-            </div>
-            <!-- Card 4: Selesai -->
-            <div class="col-md-3">
-                <div class="card glass-card p-3 d-flex flex-row align-items-center">
-                    <div class="summary-icon bg-light text-success me-3 shadow-sm">
-                        <i class="bi bi-check-circle-fill"></i>
-                    </div>
-                    <div>
-                        <h6 class="text-muted mb-1" style="font-size: 13px;">Selesai Diperbaiki</h6>
-                        <h3 class="mb-0 fw-bold">{{ $laporans->where('status', 'Selesai')->count() }}</h3>
-                    </div>
+                <div class="icon-box icon-total">
+                    <i class="bi bi-inbox-fill"></i>
                 </div>
             </div>
         </div>
 
-        <!-- TABEL DATA UTAMA -->
-        <div class="card glass-card p-4 animate__animated animate__fadeInUp" style="animation-delay: 0.2s;">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h5 class="fw-bold"><i class="bi bi-table text-primary me-2"></i> Manajemen Data Keluhan Warga</h5>
-                <button class="btn btn-primary btn-modern shadow-sm" onclick="location.reload();"><i class="bi bi-arrow-clockwise"></i> Segarkan Data</button>
+        <!-- BELUM DITINDAKLANJUTI -->
+        <div class="col-md-3">
+            <div class="glass-card stat-card">
+                <div>
+                    <p>BELUM DITINDAKLANJUTI</p>
+                    <h3>{{ $laporans->where('status', 'Menunggu')->count() }}</h3>
+                </div>
+                <div class="icon-box icon-menunggu">
+                    <i class="bi bi-clock-fill"></i>
+                </div>
             </div>
-            
-            <div class="table-responsive">
-                <table id="tabelLaporan" class="table table-hover align-middle w-100">
-                    <thead class="table-light">
-                        <tr>
-                            <th class="text-center">No</th>
-                            <th>Foto Bukti</th>
-                            <th>Detail Keluhan</th>
-                            <th class="text-center">Titik Lokasi</th>
-                            <th class="text-center">Status</th>
-                            <th class="text-center">Tindakan</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($laporans as $index => $item)
-                        <tr>
-                            <td class="text-center fw-bold text-muted">{{ $index + 1 }}</td>
-                            <td>
-                                @if($item->foto)
-                                    <!-- Jika ada foto, tampilkan dan bersihkan awalan 'public/' jika ada -->
-                                    <img src="{{ asset('storage/' . str_replace('public/', '', $item->foto)) }}" class="img-thumbnail-custom shadow-sm" style="width: 80px; height: 80px; object-fit: cover;" data-bs-toggle="modal" data-bs-target="#fotoModal{{ $item->id }}" title="Klik untuk memperbesar">
-                                @else
-                                    <!-- Jika tidak ada foto (kosong), tampilkan kotak abu-abu -->
-                                    <div class="bg-light rounded d-flex justify-content-center align-items-center shadow-sm" style="width: 80px; height: 80px;" title="Tidak ada foto">
-                                        <i class="bi bi-camera-fill text-secondary fs-3"></i>
-                                    </div>
-                                @endif
-                            </td>
-                            <td>
-                                <h6 class="fw-bold text-dark mb-1">{{ $item->judul }}</h6>
-                                <p class="text-muted mb-1" style="font-size: 13px;">{{ Str::limit($item->deskripsi, 80) }}</p>
-                                <span class="text-secondary" style="font-size: 11px;"><i class="bi bi-calendar-event text-primary"></i> Masuk pada: {{ $item->created_at->format('d M Y, H:i') }}</span>
-                            </td>
-                            <td class="text-center">
-                                <a href="https://www.google.com/maps/search/?api=1&query={{ $item->latitude }},{{ $item->longitude }}" target="_blank" class="btn btn-sm btn-light btn-modern text-danger shadow-sm">
-                                    <i class="bi bi-pin-map-fill"></i> Buka Peta
-                                </a>
-                            </td>
-                            <td class="text-center">
-                                @if(strtolower($item->status) == 'selesai')
-                                    <span class="badge badge-custom badge-soft-success"><i class="bi bi-check-circle"></i> Selesai</span>
-                                @elseif(strtolower($item->status) == 'diproses')
-                                    <span class="badge badge-custom badge-soft-primary"><i class="bi bi-gear"></i> Diproses</span>
-                                @else
-                                    <span class="badge badge-custom badge-soft-warning"><i class="bi bi-hourglass-split"></i> Menunggu</span>
-                                @endif
-                            </td>
-                            <td>
-                                <!-- Form Ubah Status -->
-                                <form action="{{ route('update.status', $item->id) }}" method="POST" class="d-flex justify-content-center gap-2">
-                                    @csrf
-                                    <select name="status" class="form-select form-select-sm" style="border-radius: 8px; width: 130px; border-color: #E2E8F0;">
-                                        <option value="Menunggu" {{ $item->status == 'Menunggu' ? 'selected' : '' }}>Menunggu</option>
-                                        <option value="Diproses" {{ $item->status == 'Diproses' ? 'selected' : '' }}>Diproses</option>
-                                        <option value="Selesai" {{ $item->status == 'Selesai' ? 'selected' : '' }}>Selesai</option>
-                                    </select>
-                                    <button type="submit" class="btn btn-sm btn-success btn-modern shadow-sm" title="Simpan Status"><i class="bi bi-floppy-fill"></i></button>
-                                </form>
-                            </td>
-                        </tr>
-                        @endforeach
-                    </tbody>
-                </table>
+        </div>
+
+        <!-- SUDAH SELESAI -->
+        <div class="col-md-3">
+            <div class="glass-card stat-card">
+                <div>
+                    <p>SUDAH SELESAI</p>
+                    <h3>{{ $laporans->where('status', 'Selesai')->count() }}</h3>
+                </div>
+                <div class="icon-box icon-selesai">
+                    <i class="bi bi-check-circle-fill"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- KATEGORI INFRASTRUKTUR -->
+        <div class="col-md-3">
+            <div class="glass-card stat-card">
+                <div>
+                    <p>KATEGORI INFRASTRUKTUR</p>
+                    <h3>{{ $kategoriCount }}</h3>
+                </div>
+                <div class="icon-box icon-kategori">
+                    <i class="bi bi-cone-striped"></i>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- DI SINI TEMPAT BARU UNTUK MODAL (DI LUAR TABEL) -->
-    @foreach($laporans as $item)
-        <!-- Modal Pop-up Foto Membesar -->
-        <div class="modal fade" id="fotoModal{{ $item->id }}" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered modal-lg">
-                <div class="modal-content" style="border-radius: 20px; border: none; background: rgba(255,255,255,0.95); backdrop-filter: blur(10px);">
-                    <div class="modal-header border-0 pb-0">
-                        <h5 class="fw-bold ms-2 mt-2">{{ $item->judul }}</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body text-center pb-4">
-                        @if($item->foto)
-                            <img src="{{ asset('storage/' . str_replace('public/', '', $item->foto)) }}" class="img-fluid rounded shadow-lg" style="max-height: 500px; width: auto; object-fit: contain;">
-                        @else
-                            <div class="py-5">
-                                <i class="bi bi-image text-muted" style="font-size: 80px;"></i>
-                                <h5 class="text-muted mt-3">Tidak ada foto bukti yang dilampirkan</h5>
-                            </div>
-                        @endif
-                    </div>
+    <!-- CHART DAN PETA -->
+    <div class="row">
+        <!-- GRAFIK -->
+        <div class="col-md-6">
+            <div class="glass-card">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="fw-bold mb-0">Grafik Jumlah Pengaduan per Bulan</h6>
+                    <select class="form-select form-select-sm w-auto">
+                        <option>{{ date('Y') }}</option>
+                    </select>
+                </div>
+                <div class="chart-container">
+                    <canvas id="pengaduanChart"></canvas>
                 </div>
             </div>
         </div>
-        <!-- End Modal -->
-    @endforeach
 
-    <!-- SCRIPT LIBRARY -->
-    <!-- jQuery (Dibutuhkan oleh DataTables) -->
-    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
-    <!-- Bootstrap Bundle JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- DataTables Core & Bootstrap 5 Integration -->
-    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+        <!-- PETA -->
+        <div class="col-md-6">
+            <div class="glass-card">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="fw-bold mb-0">Peta Persebaran Laporan</h6>
+                    <a href="{{ url('/peta') }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-arrows-fullscreen"></i> PERBESAR</a>
+                </div>
+                <div id="map"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TABEL LAPORAN TERBARU -->
+    <div class="row mt-2">
+        <div class="col-12">
+            <div class="glass-card">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h6 class="fw-bold mb-0">Laporan Kerusakan Terbaru</h6>
+                    <a href="{{ url('/laporan') }}" class="btn btn-sm btn-outline-primary">LIHAT SEMUA</a>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-hover table-custom">
+                        <thead>
+                            <tr>
+                                <th>Kategori</th>
+                                <th>Judul Laporan</th>
+                                <th>Tanggal</th>
+                                <th>Dukungan</th>
+                                <th>Lokasi (Gmaps)</th>
+                                <th>Status</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($laporans->take(5) as $item)
+                            <tr>
+                                <td class="fw-medium">{{ $item->kategori ?? 'Lainnya' }}</td>
+                                <td>{{ Str::limit($item->judul, 40) }}</td>
+                                <td>{{ $item->created_at->format('d M Y') }}</td>
+                                <td>
+                                    <span class="badge bg-danger bg-opacity-10 text-danger px-2 py-1 rounded">
+                                        <i class="bi bi-fire"></i> {{ $item->dukungans_count ?? 0 }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <small class="text-muted"><i class="bi bi-geo-alt-fill text-danger"></i> <span class="lokasi-text-dash" data-lat="{{ $item->latitude }}" data-lng="{{ $item->longitude }}">Memuat alamat...</span></small>
+                                    <br>
+                                    <a href="https://www.google.com/maps?q={{ $item->latitude }},{{ $item->longitude }}" target="_blank" class="btn btn-sm btn-outline-danger mt-1" style="font-size: 10px; padding: 2px 6px;">
+                                        <i class="bi bi-map"></i> Maps
+                                    </a>
+                                </td>
+                                <td>
+                                    @if(strtolower($item->status) == 'selesai')
+                                        <span class="badge bg-success bg-opacity-10 text-success px-2 py-1 rounded">Selesai</span>
+                                    @elseif(strtolower($item->status) == 'diproses')
+                                        <span class="badge bg-primary bg-opacity-10 text-primary px-2 py-1 rounded">Proses</span>
+                                    @else
+                                        <span class="badge bg-warning bg-opacity-10 text-warning px-2 py-1 rounded">Menunggu</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-light shadow-sm" data-bs-toggle="modal" data-bs-target="#modalDetail{{ $item->id }}">
+                                        <i class="bi bi-eye-fill"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            
+                            <!-- Modal Detail -->
+                            <div class="modal fade" id="modalDetail{{ $item->id }}" tabindex="-1">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title">Ubah Status Laporan</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            <p><strong>{{ $item->judul }}</strong></p>
+                                            <p>{{ $item->deskripsi }}</p>
+                                            <form action="{{ route('update.status', $item->id) }}" method="POST">
+                                                @csrf
+                                                <div class="mb-3">
+                                                    <label class="form-label">Status saat ini</label>
+                                                    <select name="status" class="form-select">
+                                                        <option value="Menunggu" {{ $item->status == 'Menunggu' ? 'selected' : '' }}>Menunggu</option>
+                                                        <option value="Diproses" {{ $item->status == 'Diproses' ? 'selected' : '' }}>Diproses</option>
+                                                        <option value="Selesai" {{ $item->status == 'Selesai' ? 'selected' : '' }}>Selesai</option>
+                                                    </select>
+                                                </div>
+                                                <button type="submit" class="btn btn-primary w-100">Simpan Perubahan</button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            @empty
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4">Belum ada data laporan.</td>
+                            </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+@endsection
+
+@push('scripts')
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- Leaflet JS & Plugin -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol@0.79.0/dist/L.Control.Locate.min.js"></script>
+<!-- Leaflet Heatmap -->
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+<script>
+    // Inisialisasi Chart.js
+    const ctx = document.getElementById('pengaduanChart').getContext('2d');
     
-    <!-- Inisialisasi DataTables -->
-    <script>
-        $(document).ready(function() {
-            $('#tabelLaporan').DataTable({
-                // Mengubah bahasa bawaan inggris menjadi Bahasa Indonesia
-                language: {
-                    url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/id.json'
+    // Data dari Controller
+    const monthlyData = @json(array_values($monthlyCounts));
+    
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+            datasets: [{
+                label: 'Jumlah Pengaduan',
+                data: monthlyData,
+                borderColor: '#3b82f6',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                borderWidth: 2,
+                pointBackgroundColor: '#3b82f6',
+                pointBorderColor: '#fff',
+                pointRadius: 4,
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: '#f1f5f9' },
+                    ticks: { precision: 0 }
                 },
-                // Mengatur jumlah data yang tampil
-                "pageLength": 5, 
-                "lengthMenu": [5, 10, 25, 50],
-                // Mematikan sortir otomatis di kolom aksi dan foto
-                "columnDefs": [
-                    { "orderable": false, "targets": [1, 3, 5] } 
-                ]
+                x: {
+                    grid: { display: false }
+                }
+            }
+        }
+    });
+
+    // Inisialisasi Peta Leaflet
+    const map = L.map('map').setView([5.1802, 97.1507], 13); // Default Lhokseumawe/Aceh (sesuai gambar)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+    
+    // Tambahkan tombol GPS / Locate
+    L.control.locate({
+        position: 'topleft',
+        strings: {
+            title: "Tunjukkan lokasi saya!"
+        },
+        locateOptions: {
+            enableHighAccuracy: true
+        }
+    }).addTo(map);
+
+    // Minta browser untuk fokus ke lokasi user saat halaman diload
+    map.locate({setView: true, maxZoom: 15});
+
+    // Marker dari data laporans
+    const laporans = @json($laporans);
+    laporans.forEach(item => {
+        if (item.latitude && item.longitude) {
+            let marker = L.marker([item.latitude, item.longitude]).addTo(map);
+            
+            let popupContent = `
+                <div style="min-width: 200px;">
+                    <b style="font-size:14px; color:#333;">${item.kategori || 'Lainnya'}</b><br>
+                    <span style="font-size:13px; color:#555;">${item.judul}</span><br>
+                    <hr style="margin:8px 0; border:0; border-top:1px solid #eee;">
+                    <span id="alamat-dash-${item.id}" style="font-size:12px; color:#777;"><i>📍 Memuat alamat...</i></span><br>
+                    <a href="https://www.google.com/maps?q=${item.latitude},${item.longitude}" target="_blank" 
+                       style="display:inline-block; margin-top:10px; padding:6px 12px; background:#e74c3c; color:white; text-decoration:none; border-radius:6px; font-size:12px; font-weight:bold; width:100%; text-align:center;">
+                       🗺️ Buka di Google Maps
+                    </a>
+                </div>
+            `;
+            
+            marker.bindPopup(popupContent);
+            
+            marker.on('popupopen', function() {
+                const alamatSpan = document.getElementById(`alamat-dash-${item.id}`);
+                if(alamatSpan && alamatSpan.innerHTML.includes('Memuat')) {
+                    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${item.latitude}&lon=${item.longitude}`)
+                    .then(res => res.json())
+                    .then(data => {
+                        alamatSpan.innerHTML = `📍 ${data.display_name || "Alamat tidak ditemukan"}`;
+                    })
+                    .catch(err => {
+                        alamatSpan.innerHTML = "📍 Gagal memuat alamat";
+                    });
+                }
             });
+        }
+    });
+
+    // Zona Merah (Heatmap)
+    const activeLaporans = @json($activeLaporans);
+    const heatPoints = activeLaporans
+        .filter(item => item.latitude && item.longitude)
+        .map(item => [item.latitude, item.longitude, 1.0]); // 1.0 adalah intensitas
+
+    if (heatPoints.length > 0) {
+        L.heatLayer(heatPoints, {
+            radius: 25,
+            blur: 15,
+            maxZoom: 17,
+            max: 5.0, // Batas maksimal intensitas (misal 5 laporan tumpang tindih = merah murni)
+            gradient: {0.4: 'blue', 0.6: 'cyan', 0.7: 'lime', 0.8: 'yellow', 1.0: 'red'}
+        }).addTo(map);
+    }
+
+    // Menambahkan Keterangan Warna (Legend) ke dalam peta
+    const legend = L.control({position: 'bottomright'});
+    legend.onAdd = function (map) {
+        const div = L.DomUtil.create('div', 'info legend');
+        div.innerHTML += '<h6 style="font-size:12px;font-weight:bold;margin-bottom:8px;">Intensitas Rawan<br><small style="font-weight:normal">(Radius 25px)</small></h6>';
+        div.innerHTML += '<i style="background: blue"></i> Rendah (1-2 Laporan)<br>';
+        div.innerHTML += '<i style="background: lime"></i> Sedang (3-4 Laporan)<br>';
+        div.innerHTML += '<i style="background: red"></i> Tinggi (≥5 Laporan)<br>';
+        return div;
+    };
+    legend.addTo(map);
+
+    // Geocoding untuk Tabel Dashboard
+    document.addEventListener("DOMContentLoaded", function() {
+        const lokasiElements = document.querySelectorAll('.lokasi-text-dash');
+        lokasiElements.forEach((el, index) => {
+            const lat = el.getAttribute('data-lat');
+            const lng = el.getAttribute('data-lng');
+            
+            setTimeout(() => {
+                fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        el.innerText = data.display_name ? data.display_name : "Alamat tidak ditemukan";
+                    })
+                    .catch(error => {
+                        el.innerText = `Lat: ${lat}, Lng: ${lng}`;
+                    });
+            }, index * 1000); 
         });
-    </script>
-</body>
-</html>
+    });
+
+</script>
+@endpush

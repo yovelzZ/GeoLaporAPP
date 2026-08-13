@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import '../services/api_service.dart';
 
 class FormLaporan extends StatefulWidget {
@@ -14,16 +15,20 @@ class FormLaporan extends StatefulWidget {
 class _FormLaporanState extends State<FormLaporan> {
   final TextEditingController _judulController = TextEditingController();
   final TextEditingController _deskripsiController = TextEditingController();
+  final TextEditingController _kategoriController = TextEditingController();
+  
+  final List<String> _kategoriOptions = [
+    'Jalan', 'Lampu Jalan', 'Drainase', 'Jembatan', 'Fasilitas Umum', 'Lainnya'
+  ];
   
   File? _image;
   Position? _currentPosition;
   bool _isLoading = false;
 
-  // Fungsi Buka Kamera
   Future<void> _ambilFoto() async {
     final pickedFile = await ImagePicker().pickImage(
       source: ImageSource.camera, 
-      imageQuality: 70, // Kompres foto agar tidak berat saat dikirim
+      imageQuality: 70,
     );
     if (pickedFile != null) {
       setState(() {
@@ -32,7 +37,6 @@ class _FormLaporanState extends State<FormLaporan> {
     }
   }
 
-  // Fungsi Dapatkan Koordinat GPS
   Future<void> _ambilLokasi() async {
     setState(() => _isLoading = true);
     try {
@@ -46,27 +50,45 @@ class _FormLaporanState extends State<FormLaporan> {
       }
 
       Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      
+      // Ambil nama alamat dari koordinat (Reverse Geocoding)
+      List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
+      if (placemarks.isNotEmpty) {
+        Placemark place = placemarks.first;
+        String fullAddress = "${place.street}, ${place.subLocality}, ${place.locality}, ${place.subAdministrativeArea}".toLowerCase();
+
+        // Cek apakah alamat mengandung kata "mlati"
+        if (!fullAddress.contains('mlati')) {
+          throw Exception("Maaf, pelaporan hanya berlaku di wilayah Kecamatan Mlati, Sleman.");
+        }
+      }
+
       setState(() {
         _currentPosition = position;
       });
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(e.toString().replaceAll("Exception: ", "")),
+        backgroundColor: Colors.redAccent,
+      ));
+      setState(() {
+        _currentPosition = null; // Reset jika ditolak
+      });
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  // Fungsi Kirim ke API (MEMPERBAIKI ERROR SEBELUMNYA)
   Future<void> _kirimData() async {
-    // 1. Cek apakah ada yang masih kosong
     if (_judulController.text.isEmpty || 
         _deskripsiController.text.isEmpty || 
+        _kategoriController.text.isEmpty ||
         _image == null || 
         _currentPosition == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Harap lengkapi Judul, Deskripsi, Foto, dan Lokasi!'),
-          backgroundColor: Colors.red,
+          content: Text('Harap lengkapi Kategori, Judul, Deskripsi, Foto, dan Lokasi!'),
+          backgroundColor: Colors.redAccent,
         )
       );
       return;
@@ -74,18 +96,17 @@ class _FormLaporanState extends State<FormLaporan> {
 
     setState(() => _isLoading = true);
 
-    // 2. Panggil API dengan 5 argumen berurutan
     bool isSuccess = await ApiService.kirimLaporan(
-      _judulController.text,        // Argumen 1
-      _deskripsiController.text,    // Argumen 2
-      _currentPosition!.latitude,   // Argumen 3
-      _currentPosition!.longitude,  // Argumen 4
-      _image!,                      // Argumen 5
+      _judulController.text,        
+      _deskripsiController.text,    
+      _kategoriController.text,     
+      _currentPosition!.latitude,   
+      _currentPosition!.longitude,  
+      _image!,                      
     );
 
     setState(() => _isLoading = false);
 
-    // 3. Cek hasil dari Server
     if (isSuccess) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -94,12 +115,12 @@ class _FormLaporanState extends State<FormLaporan> {
           behavior: SnackBarBehavior.floating,
         )
       );
-      Navigator.pop(context); // Otomatis kembali ke layar Home
+      Navigator.pop(context); 
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Gagal mengirim ke server. Coba lagi.'),
-          backgroundColor: Colors.red,
+          backgroundColor: Colors.redAccent,
         )
       );
     }
@@ -108,135 +129,220 @@ class _FormLaporanState extends State<FormLaporan> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF7F9FC),
       appBar: AppBar(
-        title: const Text("Tulis Laporan", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF4A90E2),
-        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text("Tulis Laporan", style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.transparent,
+        iconTheme: const IconThemeData(color: Colors.black87),
         elevation: 0,
+        centerTitle: true,
       ),
       body: Stack(
         children: [
           SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
+            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // BAGIAN FOTO
-                const Text("Bukti Foto", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(height: 10),
+                // FOTO AREA (Lebih menonjol)
                 GestureDetector(
                   onTap: _ambilFoto,
                   child: Container(
-                    height: 180,
+                    height: 220,
                     width: double.infinity,
                     decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: BorderRadius.circular(15),
-                      border: Border.all(color: Colors.grey[300]!, style: BorderStyle.solid),
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 10))
+                      ],
+                      border: _image == null ? Border.all(color: Colors.blue.withOpacity(0.3), width: 2, style: BorderStyle.solid) : null,
                     ),
                     child: _image != null
                         ? ClipRRect(
-                            borderRadius: BorderRadius.circular(15),
+                            borderRadius: BorderRadius.circular(24),
                             child: Image.file(_image!, fit: BoxFit.cover),
                           )
-                        : const Column(
+                        : Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.camera_alt, size: 50, color: Colors.grey),
-                              SizedBox(height: 10),
-                              Text("Ketuk untuk ambil foto dari Kamera", style: TextStyle(color: Colors.grey)),
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.withOpacity(0.1),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.camera_alt_rounded, size: 40, color: Colors.blue),
+                              ),
+                              const SizedBox(height: 12),
+                              const Text("Ambil Bukti Foto", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
+                              const SizedBox(height: 4),
+                              const Text("Pastikan foto jelas & terang", style: TextStyle(color: Colors.grey, fontSize: 13)),
                             ],
                           ),
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 30),
 
-                // BAGIAN FORM INPUT TEKS
-                const Text("Judul Keluhan", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _judulController,
-                  decoration: InputDecoration(
-                    hintText: "Contoh: Jalan berlubang di Ring Road",
-                    filled: true,
-                    fillColor: Colors.grey[50],
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                // LOKASI AREA (Modern Card)
+                const Text("Lokasi Kejadian", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
+                const SizedBox(height: 10),
+                InkWell(
+                  onTap: _ambilLokasi,
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
+                      border: Border.all(color: _currentPosition != null ? Colors.green.withOpacity(0.3) : Colors.transparent),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: _currentPosition != null ? Colors.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            _currentPosition != null ? Icons.check_circle_rounded : Icons.location_on_rounded, 
+                            color: _currentPosition != null ? Colors.green : Colors.orange
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _currentPosition != null ? "Lokasi Ditemukan" : "Deteksi Lokasi GPS",
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                              ),
+                              if (_currentPosition != null)
+                                Text(
+                                  "${_currentPosition!.latitude}, ${_currentPosition!.longitude}",
+                                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                )
+                              else
+                                const Text("Ketuk untuk mendapatkan koordinat", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                            ],
+                          ),
+                        ),
+                        if (_currentPosition == null)
+                          const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.grey)
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 30),
 
-                const Text("Deskripsi Detail", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(height: 8),
-                TextField(
+                // FORM TEXT AREA
+                const Text("Detail Laporan", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
+                const SizedBox(height: 12),
+                
+                // Kategori
+                Autocomplete<String>(
+                  optionsBuilder: (TextEditingValue textEditingValue) {
+                    if (textEditingValue.text.isEmpty) return const Iterable<String>.empty();
+                    return _kategoriOptions.where((String option) => option.toLowerCase().contains(textEditingValue.text.toLowerCase()));
+                  },
+                  onSelected: (String selection) => _kategoriController.text = selection,
+                  fieldViewBuilder: (context, controller, focusNode, onEditingComplete) {
+                    controller.addListener(() => _kategoriController.text = controller.text);
+                    return TextFormField(
+                      controller: controller,
+                      focusNode: focusNode,
+                      onEditingComplete: onEditingComplete,
+                      decoration: InputDecoration(
+                        labelText: "Kategori Infrastruktur",
+                        hintText: "Misal: Jalan",
+                        filled: true,
+                        fillColor: Colors.white,
+                        prefixIcon: const Icon(Icons.category_rounded, color: Colors.blue),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey.withOpacity(0.2))),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Colors.blue, width: 2)),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // Judul
+                TextFormField(
+                  controller: _judulController,
+                  decoration: InputDecoration(
+                    labelText: "Judul Singkat",
+                    hintText: "Contoh: Jalan berlubang di Ring Road",
+                    filled: true,
+                    fillColor: Colors.white,
+                    prefixIcon: const Icon(Icons.title_rounded, color: Colors.blue),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey.withOpacity(0.2))),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Colors.blue, width: 2)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Deskripsi
+                TextFormField(
                   controller: _deskripsiController,
                   maxLines: 4,
                   decoration: InputDecoration(
-                    hintText: "Jelaskan detail kerusakannya di sini...",
+                    labelText: "Deskripsi Lengkap",
+                    hintText: "Jelaskan kronologi atau kondisi secara detail...",
                     filled: true,
-                    fillColor: Colors.grey[50],
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    fillColor: Colors.white,
+                    alignLabelWithHint: true,
+                    prefixIcon: const Padding(
+                      padding: EdgeInsets.only(bottom: 60.0),
+                      child: Icon(Icons.description_rounded, color: Colors.blue),
+                    ),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey.withOpacity(0.2))),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Colors.blue, width: 2)),
                   ),
-                ),
-                const SizedBox(height: 24),
-
-                // BAGIAN LOKASI
-                const Text("Titik Lokasi", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(12)),
-                        child: Text(
-                          _currentPosition != null 
-                              ? "Lat: ${_currentPosition!.latitude}\nLng: ${_currentPosition!.longitude}"
-                              : "Lokasi belum didapatkan",
-                          style: TextStyle(color: _currentPosition != null ? Colors.black : Colors.grey),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF4A90E2),
-                        padding: const EdgeInsets.all(16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: _ambilLokasi,
-                      child: const Icon(Icons.my_location, color: Colors.white),
-                    ),
-                  ],
                 ),
                 
                 const SizedBox(height: 40),
 
-                // TOMBOL KIRIM
-                SizedBox(
+                // TOMBOL KIRIM (Modern Full Width)
+                Container(
                   width: double.infinity,
-                  height: 55,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF4A90E2), Color(0xFF007AFF)],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    boxShadow: [
+                      BoxShadow(color: Colors.blue.withOpacity(0.4), blurRadius: 15, offset: const Offset(0, 8))
+                    ],
+                  ),
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF4A90E2),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                      elevation: 0,
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                     ),
                     onPressed: _isLoading ? null : _kirimData,
-                    child: const Text("KIRIM LAPORAN", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                    child: const Text("KIRIM LAPORAN", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 30),
               ],
             ),
           ),
           
-          // ANIMASI LOADING SAAT MENGIRIM DATA
           if (_isLoading)
             Container(
-              color: Colors.black.withOpacity(0.5),
+              color: Colors.white.withOpacity(0.8),
               child: const Center(
-                child: CircularProgressIndicator(color: Colors.white),
+                child: CircularProgressIndicator(color: Colors.blue),
               ),
             ),
         ],

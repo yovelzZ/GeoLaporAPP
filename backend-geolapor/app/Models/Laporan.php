@@ -11,11 +11,28 @@ class Laporan extends Model
 
     // Mengizinkan kolom-kolom ini diisi data dari luar
     protected $fillable = [
-        'judul', 
-        'deskripsi', 
-        'foto_path', 
-        'latitude', 
-        'longitude', 
-        'status'
+        'user_id',
+        'judul',
+        'deskripsi',
+        'kategori',
+        'foto',
+        'latitude',
+        'longitude',
+        'status',
     ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function dukungans()
+    {
+        return $this->hasMany(Dukungan::class);
+    }
+
+    public function komentars()
+    {
+        return $this->hasMany(Komentar::class);
+    }
 }

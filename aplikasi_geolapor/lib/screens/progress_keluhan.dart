@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../widgets/komentar_bottom_sheet.dart';
 
 class ProgressKeluhan extends StatefulWidget {
   const ProgressKeluhan({super.key});
@@ -18,59 +19,85 @@ class _ProgressKeluhanState extends State<ProgressKeluhan> {
     _tarikData();
   }
 
-  // Fungsi mengambil data dari database via API
   Future<void> _tarikData() async {
     var data = await ApiService.ambilSemuaLaporan();
     setState(() {
-      // Membalik array agar laporan terbaru muncul di paling atas
-      listLaporan = data.reversed.toList(); 
+      listLaporan = data; 
       isLoading = false;
     });
+  }
+
+  Future<void> _handleDukungan(int index, int laporanId) async {
+    final result = await ApiService.toggleDukungan(laporanId);
+    
+    if (result == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Login untuk memberi dukungan!')),
+        );
+      }
+      return;
+    }
+
+    setState(() {
+      listLaporan[index]['dukungans_count'] = result['dukungans_count'];
+      listLaporan[index]['is_supported_by_me'] = result['status'] == 'supported';
+    });
+  }
+
+  void _bukaKomentar(int index, int laporanId) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => KomentarBottomSheet(
+        laporanId: laporanId,
+        onKomentarUpdated: (newCount) {
+          setState(() {
+            listLaporan[index]['komentars_count'] = newCount;
+          });
+        },
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: const Color(0xFFF0F2F5), // Warna background ala sosmed (abu terang)
       appBar: AppBar(
-        elevation: 0,
+        elevation: 0.5,
         backgroundColor: Colors.white,
-        iconTheme: const IconThemeData(color: Colors.black87),
-        title: const Text("Progress Keluhan", style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
-        centerTitle: true,
+        title: const Text(
+          "Keluhan Warga", 
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.w800, fontSize: 22)
+        ),
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF4A90E2)))
           : listLaporan.isEmpty
               ? _buildEmptyState()
               : RefreshIndicator(
-                  onRefresh: _tarikData, // Fitur "Tarik ke bawah untuk refresh"
+                  onRefresh: _tarikData,
                   color: const Color(0xFF4A90E2),
                   child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                     itemCount: listLaporan.length,
                     itemBuilder: (context, index) {
                       var laporan = listLaporan[index];
-                      // Jika di tabel database belum ada kolom 'status', defaultkan 'Menunggu'
-                      String statusLaporan = laporan['status'] ?? 'Menunggu'; 
-                      return _buildProgressCard(
-                        judul: laporan['judul'],
-                        deskripsi: laporan['deskripsi'],
-                        status: statusLaporan,
-                      );
+                      return _buildProgressCard(laporan, index);
                     },
                   ),
                 ),
     );
   }
 
-  // UI Bantuan: Jika belum ada laporan sama sekali
   Widget _buildEmptyState() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.inbox_rounded, size: 80, color: Colors.grey[300]),
+          Icon(Icons.inbox_rounded, size: 80, color: Colors.grey[400]),
           const SizedBox(height: 16),
           const Text("Belum ada keluhan yang diajukan", style: TextStyle(color: Colors.grey, fontSize: 16)),
         ],
@@ -78,85 +105,191 @@ class _ProgressKeluhanState extends State<ProgressKeluhan> {
     );
   }
 
-  // UI Bantuan: Desain Kartu Laporan
-  Widget _buildProgressCard({required String judul, required String deskripsi, required String status}) {
-    // Menentukan warna badge (label) berdasarkan status
-    Color statusColor;
-    IconData statusIcon;
+  Widget _buildProgressCard(dynamic laporan, int index) {
+    String judul = laporan['judul'] ?? '';
+    String deskripsi = laporan['deskripsi'] ?? '';
+    String status = laporan['status'] ?? 'Menunggu';
+    int dukunganCount = laporan['dukungans_count'] ?? 0;
+    int komentarCount = laporan['komentars_count'] ?? 0;
+    bool isSupported = laporan['is_supported_by_me'] ?? false;
+    String kategori = laporan['kategori'] ?? 'Lainnya';
+    String foto = laporan['foto'] ?? '';
+    String pelapor = (laporan['user'] != null && laporan['user']['name'] != null) 
+                      ? laporan['user']['name'] 
+                      : 'Warga Anonim';
 
+    // Format Tanggal secara manual sederhana dari timestamp created_at
+    String tanggalRaw = laporan['created_at'] ?? '';
+    String tanggal = "Baru saja";
+    if (tanggalRaw.length > 10) {
+      tanggal = tanggalRaw.substring(0, 10);
+    }
+
+    // Bangun URL foto menggunakan Base URL API
+    String fotoUrl = '';
+    if (foto.isNotEmpty) {
+      fotoUrl = ApiService.baseUrl.replaceAll('/api', '/storage/') + foto;
+    }
+
+    Color statusColor;
     if (status.toLowerCase() == 'selesai') {
-      statusColor = Colors.green;
-      statusIcon = Icons.check_circle;
+      statusColor = const Color(0xFF10B981); // Emerald
     } else if (status.toLowerCase() == 'diproses') {
-      statusColor = Colors.blue;
-      statusIcon = Icons.autorenew;
+      statusColor = const Color(0xFF3B82F6); // Blue
     } else {
-      statusColor = Colors.orange; // Default untuk "Menunggu"
-      statusIcon = Icons.pending_actions;
+      statusColor = const Color(0xFFF59E0B); // Amber
     }
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.08), spreadRadius: 1, blurRadius: 10, offset: const Offset(0, 2))],
+        border: Border(
+          top: BorderSide(color: Color(0xFFE5E7EB), width: 0.5),
+          bottom: BorderSide(color: Color(0xFFE5E7EB), width: 0.5),
+        )
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 1. Header Card (Avatar, Nama Pelapor, Kategori)
+          Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Row(
               children: [
-                // Ikon Laporan Bulat
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: Colors.grey[100], shape: BoxShape.circle),
-                  child: const Icon(Icons.report_problem_rounded, color: Colors.black54),
+                CircleAvatar(
+                  backgroundColor: Colors.grey[200],
+                  radius: 20,
+                  child: const Icon(Icons.person, color: Colors.grey),
                 ),
                 const SizedBox(width: 12),
-                
-                // Judul & Deskripsi
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(judul, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis),
-                      const SizedBox(height: 4),
-                      Text(deskripsi, style: const TextStyle(fontSize: 13, color: Colors.grey), maxLines: 2, overflow: TextOverflow.ellipsis),
+                      Text(
+                        pelapor, 
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.black87)
+                      ),
+                      Row(
+                        children: [
+                          Text(tanggal, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                          const SizedBox(width: 6),
+                          const Text("•", style: TextStyle(color: Colors.grey, fontSize: 10)),
+                          const SizedBox(width: 6),
+                          Text(kategori, style: TextStyle(fontSize: 12, color: Colors.grey[600], fontWeight: FontWeight.w500)),
+                        ],
+                      )
                     ],
                   ),
                 ),
-              ],
-            ),
-            
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: Divider(height: 1, color: Color(0xFFEEEEEE)),
-            ),
-            
-            // Bagian Bawah: Label Status
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text("Status Laporan:", style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w500)),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
-                  child: Row(
-                    children: [
-                      Icon(statusIcon, size: 14, color: statusColor),
-                      const SizedBox(width: 4),
-                      Text(status, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: statusColor)),
-                    ],
-                  ),
+                  child: Text(status, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: statusColor)),
                 )
               ],
-            )
+            ),
+          ),
+          
+          // 2. Konten (Judul & Teks)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(judul, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 6),
+                Text(
+                  deskripsi, 
+                  style: const TextStyle(fontSize: 14, color: Colors.black87, height: 1.4),
+                ),
+              ],
+            ),
+          ),
+
+          // 3. Foto Laporan (Full Width)
+          if (fotoUrl.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              color: Colors.grey[100],
+              child: Image.network(
+                fotoUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => const Padding(
+                  padding: EdgeInsets.all(24.0),
+                  child: Icon(Icons.broken_image, size: 40, color: Colors.grey),
+                ),
+              ),
+            ),
           ],
-        ),
+
+          // 4. Footer (Action Bar: Dukungan & Angka)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
+            child: Row(
+              children: [
+                InkWell(
+                  onTap: () => _handleDukungan(index, laporan['id']),
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isSupported ? Colors.red.withOpacity(0.1) : Colors.grey[100],
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          isSupported ? Icons.local_fire_department : Icons.local_fire_department_outlined, 
+                          size: 20, 
+                          color: isSupported ? Colors.red : Colors.grey[700]
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          dukunganCount > 0 ? '$dukunganCount' : 'Dukung',
+                          style: TextStyle(
+                            fontSize: 14, 
+                            fontWeight: FontWeight.bold, 
+                            color: isSupported ? Colors.red : Colors.grey[700]
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                InkWell(
+                  onTap: () => _bukaKomentar(index, laporan['id']),
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.chat_bubble_outline, size: 18, color: Colors.grey[700]),
+                        const SizedBox(width: 6),
+                        Text(
+                          komentarCount > 0 ? '$komentarCount' : 'Komentar', 
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey[700])
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: Icon(Icons.share_outlined, size: 20, color: Colors.grey[700]),
+                  onPressed: () {},
+                )
+              ],
+            ),
+          )
+        ],
       ),
     );
   }
