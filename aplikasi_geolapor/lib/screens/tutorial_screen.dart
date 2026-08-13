@@ -17,12 +17,12 @@ class TutorialScreen extends StatelessWidget {
               children: [
                 Text(
                   "Pusat Bantuan",
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white),
+                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold,color: Color(0xFF1E88E5)),
                 ),
                 SizedBox(height: 6),
                 Text(
                   "Panduan menggunakan aplikasi GeoLapor",
-                  style: TextStyle(fontSize: 13, color: Colors.white70),
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold,color: Color(0xFF1E88E5)),
                 ),
               ],
             ),
