@@ -25,15 +25,27 @@ class _LoginScreenState extends State<LoginScreen> {
     final result = await ApiService.login(_emailController.text, _passwordController.text);
     setState(() => _isLoading = false);
 
-    if (result != null && result['error'] != true) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Berhasil Login!')));
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
-        (route) => false,
-      );
+    // Perbaikan validasi: Cek apakah result memiliki token atau tidak ada key 'error'
+    if (result != null && result.containsKey('token') && result['error'] != true) {
+      // Pastikan token benar-benar tersimpan sebelum pindah halaman
+      String? savedToken = await ApiService.getToken();
+      
+      if (savedToken != null && savedToken.isNotEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Berhasil Login!')));
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+          (route) => false,
+        );
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal menyimpan sesi login. Coba lagi.')));
+      }
     } else {
-      String errMsg = result != null ? result['message'] : 'Email atau Password salah!';
+      String errMsg = (result != null && result['message'] != null) 
+          ? result['message'] 
+          : 'Email atau Password salah!';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errMsg)));
     }
   }
