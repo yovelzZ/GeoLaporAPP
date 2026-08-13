@@ -10,8 +10,13 @@ class ProgressKeluhan extends StatefulWidget {
 }
 
 class _ProgressKeluhanState extends State<ProgressKeluhan> {
-  List<dynamic> listLaporan = [];
+  List<dynamic> listLaporan = []; // Data asli (semua)
+  List<dynamic> _laporanDitampilkan = []; // Data yang sudah difilter
   bool isLoading = true;
+
+  // Variabel untuk fitur filter
+  String _filterAktif = 'Semua';
+  final List<String> _pilihanFilter = ['Semua', 'Menunggu', 'Diproses', 'Selesai'];
 
   @override
   void initState() {
@@ -20,14 +25,31 @@ class _ProgressKeluhanState extends State<ProgressKeluhan> {
   }
 
   Future<void> _tarikData() async {
+    setState(() => isLoading = true);
     var data = await ApiService.ambilSemuaLaporan();
     setState(() {
       listLaporan = data; 
+      _terapkanFilter(_filterAktif); // Terapkan filter saat data baru masuk
       isLoading = false;
     });
   }
 
-  Future<void> _handleDukungan(int index, int laporanId) async {
+  // Fungsi Filter
+  void _terapkanFilter(String filter) {
+    setState(() {
+      _filterAktif = filter;
+      if (filter == 'Semua') {
+        _laporanDitampilkan = List.from(listLaporan);
+      } else {
+        _laporanDitampilkan = listLaporan.where((laporan) {
+          String status = laporan['status'] ?? 'Menunggu';
+          return status.toLowerCase() == filter.toLowerCase();
+        }).toList();
+      }
+    });
+  }
+
+  Future<void> _handleDukungan(int laporanId) async {
     final result = await ApiService.toggleDukungan(laporanId);
     
     if (result == null) {
@@ -40,12 +62,18 @@ class _ProgressKeluhanState extends State<ProgressKeluhan> {
     }
 
     setState(() {
-      listLaporan[index]['dukungans_count'] = result['dukungans_count'];
-      listLaporan[index]['is_supported_by_me'] = result['status'] == 'supported';
+      // Cari index dari data ASLI berdasarkan laporanId
+      int originalIndex = listLaporan.indexWhere((l) => l['id'] == laporanId);
+      if (originalIndex != -1) {
+        listLaporan[originalIndex]['dukungans_count'] = result['dukungans_count'];
+        listLaporan[originalIndex]['is_supported_by_me'] = result['status'] == 'supported';
+        // Sinkronisasi data yang ditampilkan di layar
+        _terapkanFilter(_filterAktif); 
+      }
     });
   }
 
-  void _bukaKomentar(int index, int laporanId) {
+  void _bukaKomentar(int laporanId) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -54,7 +82,11 @@ class _ProgressKeluhanState extends State<ProgressKeluhan> {
         laporanId: laporanId,
         onKomentarUpdated: (newCount) {
           setState(() {
-            listLaporan[index]['komentars_count'] = newCount;
+            int originalIndex = listLaporan.indexWhere((l) => l['id'] == laporanId);
+            if (originalIndex != -1) {
+              listLaporan[originalIndex]['komentars_count'] = newCount;
+              _terapkanFilter(_filterAktif); // Sinkronisasi ulang
+            }
           });
         },
       ),
@@ -64,7 +96,7 @@ class _ProgressKeluhanState extends State<ProgressKeluhan> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F2F5), // Warna background ala sosmed (abu terang)
+      backgroundColor: const Color(0xFFF0F2F5),
       appBar: AppBar(
         elevation: 0.5,
         backgroundColor: Colors.white,
@@ -73,22 +105,71 @@ class _ProgressKeluhanState extends State<ProgressKeluhan> {
           style: TextStyle(color: Colors.black, fontWeight: FontWeight.w800, fontSize: 22)
         ),
       ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF4A90E2)))
-          : listLaporan.isEmpty
-              ? _buildEmptyState()
-              : RefreshIndicator(
-                  onRefresh: _tarikData,
-                  color: const Color(0xFF4A90E2),
-                  child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    itemCount: listLaporan.length,
-                    itemBuilder: (context, index) {
-                      var laporan = listLaporan[index];
-                      return _buildProgressCard(laporan, index);
+      body: Column(
+        children: [
+          // --- BAGIAN FILTER UI ---
+          Container(
+            color: Colors.white,
+            height: 60,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _pilihanFilter.length,
+              itemBuilder: (context, index) {
+                final filter = _pilihanFilter[index];
+                final isSelected = _filterAktif == filter;
+                
+                return Padding(
+                  padding: const EdgeInsets.only(right: 10, top: 10, bottom: 10),
+                  child: ChoiceChip(
+                    label: Text(
+                      filter,
+                      style: TextStyle(
+                        color: isSelected ? Colors.black87 : Colors.black54,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                    selected: isSelected,
+                    onSelected: (selected) {
+                      if (selected) {
+                        _terapkanFilter(filter);
+                      }
                     },
+                    selectedColor: const Color(0xFF1E88E5), // Warna cream
+                    backgroundColor: const Color(0xFFF0F2F5),
+                    side: BorderSide(
+                      color: isSelected ? Colors.transparent : Colors.grey.shade300,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                   ),
-                ),
+                );
+              },
+            ),
+          ),
+          
+          // --- BAGIAN DAFTAR KELUHAN ---
+          Expanded(
+            child: isLoading
+                ? const Center(child: CircularProgressIndicator(color: Color(0xFF4A90E2)))
+                : _laporanDitampilkan.isEmpty
+                    ? _buildEmptyState()
+                    : RefreshIndicator(
+                        onRefresh: _tarikData,
+                        color: const Color(0xFF4A90E2),
+                        child: ListView.builder(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          itemCount: _laporanDitampilkan.length, // Gunakan list yang sudah difilter
+                          itemBuilder: (context, index) {
+                            var laporan = _laporanDitampilkan[index];
+                            return _buildProgressCard(laporan);
+                          },
+                        ),
+                      ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -99,13 +180,18 @@ class _ProgressKeluhanState extends State<ProgressKeluhan> {
         children: [
           Icon(Icons.inbox_rounded, size: 80, color: Colors.grey[400]),
           const SizedBox(height: 16),
-          const Text("Belum ada keluhan yang diajukan", style: TextStyle(color: Colors.grey, fontSize: 16)),
+          Text(
+            _filterAktif == 'Semua' 
+              ? "Belum ada keluhan yang diajukan" 
+              : "Tidak ada keluhan dengan status '$_filterAktif'", 
+            style: const TextStyle(color: Colors.grey, fontSize: 16)
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildProgressCard(dynamic laporan, int index) {
+  Widget _buildProgressCard(dynamic laporan) { // Index dihapus karena tidak lagi relevan secara UI
     String judul = laporan['judul'] ?? '';
     String deskripsi = laporan['deskripsi'] ?? '';
     String status = laporan['status'] ?? 'Menunggu';
@@ -118,14 +204,12 @@ class _ProgressKeluhanState extends State<ProgressKeluhan> {
                       ? laporan['user']['name'] 
                       : 'Warga Anonim';
 
-    // Format Tanggal secara manual sederhana dari timestamp created_at
     String tanggalRaw = laporan['created_at'] ?? '';
     String tanggal = "Baru saja";
     if (tanggalRaw.length > 10) {
       tanggal = tanggalRaw.substring(0, 10);
     }
 
-    // Bangun URL foto menggunakan Base URL API
     String fotoUrl = '';
     if (foto.isNotEmpty) {
       fotoUrl = ApiService.baseUrl.replaceAll('/api', '/storage/') + foto;
@@ -152,7 +236,6 @@ class _ProgressKeluhanState extends State<ProgressKeluhan> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. Header Card (Avatar, Nama Pelapor, Kategori)
           Padding(
             padding: const EdgeInsets.all(12.0),
             child: Row(
@@ -192,7 +275,6 @@ class _ProgressKeluhanState extends State<ProgressKeluhan> {
             ),
           ),
           
-          // 2. Konten (Judul & Teks)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
             child: Column(
@@ -208,7 +290,6 @@ class _ProgressKeluhanState extends State<ProgressKeluhan> {
             ),
           ),
 
-          // 3. Foto Laporan (Full Width)
           if (fotoUrl.isNotEmpty) ...[
             const SizedBox(height: 12),
             Container(
@@ -225,13 +306,12 @@ class _ProgressKeluhanState extends State<ProgressKeluhan> {
             ),
           ],
 
-          // 4. Footer (Action Bar: Dukungan & Angka)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
             child: Row(
               children: [
                 InkWell(
-                  onTap: () => _handleDukungan(index, laporan['id']),
+                  onTap: () => _handleDukungan(laporan['id']), // Cukup gunakan laporanId
                   borderRadius: BorderRadius.circular(20),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -261,7 +341,7 @@ class _ProgressKeluhanState extends State<ProgressKeluhan> {
                 ),
                 const SizedBox(width: 12),
                 InkWell(
-                  onTap: () => _bukaKomentar(index, laporan['id']),
+                  onTap: () => _bukaKomentar(laporan['id']), // Cukup gunakan laporanId
                   borderRadius: BorderRadius.circular(20),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
